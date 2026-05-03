@@ -1,0 +1,52 @@
+#adr		description
+#----------------------
+
+0276A		[ER0] = R2
+029A8		pop xr12
+02AAE		r0 >> 4,rt
+02CB0		r0 = r8, pop r8
+02D34		pop er4
+03182		R0 = R2, pop xr8, rt
+032A0		pop er0
+04B8C		pop qr0
+032A2		nop
+03A68		pop er12
+03DE2		r2 = r0
+14A76		r2 = r0,pop r6 er12
+0440A		[er8] += er2, pop xr8
+0440C		[er8] = er2,pop xr8
+0442C		[er10] = er8, pop qr8, rt
+044B2		pop er2
+04b8a		pop qr80
+047EA		KO = R2 = 0
+04F68		sp = er14, pop er14
+04F6A		pop er14
+07468		er2 = er0, pop er8
+0746A		er0 = er2, pop er8
+0746C		pop er8
+07EF8		memcpy, pop er14, rt
+087FC		er0 = er2, rt
+08AEE		er2 = 1, r0 = 1, rt
+04414		er2 = 0, r0 = 2, [er8] = er2, pop xr8
+11D90		bl er12
+0329C		bl memcpy,pop er0
+11E63		setlr
+132F2		[er0] = er2, rt
+13482		ER0 += ER2, ER8 = [ER0], rt
+13484		ER8 = [ER0], rt
+1417E		er0 = er8
+1441C		r0 = [er2]
+14558		r0 = 0, pop er14, pop r4
+1468C		er8 = er0
+154EE		pop xr0
+157F0		r2 = r4
+168AC		r0 = r8, pop xr8
+168B0		pop xr8
+16CDA		bl memcpy, pop er0, pop er4
+16CEC		ER0 += ER2, rt
+1853A		r0 = r2 = 0
+1853C		r0 = r2
+19F9E		R0 &= 15
+13230		er10 = er2, rt
+14594		er0 += 1, rt
+
