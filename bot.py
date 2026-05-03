@@ -5,9 +5,8 @@ import subprocess, tempfile, os, sys, requests
 
 # ── CẤU HÌNH ────────────────────────────────────────────────
 BOT_TOKEN    = os.environ.get("BOT_TOKEN", "")
-GITHUB_REPO  = "https://github.com/liemhandsome/hdcompiler"
+GITHUB_REPO  = "https://github.com/liemhandsome/hdbot"
 COMPILER_DIR = os.path.join(os.path.dirname(__file__), "hdcompiler")
-
 # ── CLONE COMPILER ───────────────────────────────────────────
 def ensure_compiler():
     if os.path.isdir(os.path.join(COMPILER_DIR, ".git")):
