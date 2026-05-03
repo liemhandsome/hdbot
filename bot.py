@@ -21,7 +21,7 @@ import asyncio
 import requests
 
 # ── CẤU HÌNH ────────────────────────────────────────────────
-BOT_TOKEN    = os.environ.get("BOT_TOKEN", "MTM5NDMyMTc5NjA5ODE2Mjc0OA.Gc4WfH.PqPZBdGXhOAtmcUerkdMh34ox-pHerEcPhKuL8")
+BOT_TOKEN    = os.environ.get("BOT_TOKEN", "")
 GITHUB_REPO  = "https://github.com/liemhandsome/hdbot"
 COMPILER_DIR = os.path.join(os.path.dirname(__file__), "hdcompiler")
 # Monkey-patch network: tất cả request qua proxy nếu được set
