@@ -4,7 +4,7 @@ from discord import app_commands
 import subprocess, tempfile, os, sys, requests
 
 # ── CẤU HÌNH ────────────────────────────────────────────────
-BOT_TOKEN    = os.environ.get("BOT_TOKEN", "TOKEN_Ở_ĐÂY")
+BOT_TOKEN    = os.environ.get("BOT_TOKEN", "")
 GITHUB_REPO  = "https://github.com/liemhandsome/hdcompiler"
 COMPILER_DIR = os.path.join(os.path.dirname(__file__), "hdcompiler")
 
