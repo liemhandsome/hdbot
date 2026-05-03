@@ -1,109 +1,121 @@
 #!/usr/bin/env python3
-"""
-Discord Bot - HD Compiler
-Dùng monkey network (mitmproxy/requests patching) để bypass nếu cần.
-Lấy compiler từ GitHub, nhận file .asm từ Discord, trả kết quả.
-
-Cài đặt:
-    pip install discord.py requests
-
-Dùng:
-    BOT_TOKEN=xxx python bot.py
-"""
-
 import discord
-import subprocess
-import tempfile
-import os
-import sys
-import shutil
-import asyncio
-import requests
+from discord import app_commands
+import subprocess, tempfile, os, sys, requests
 
 # ── CẤU HÌNH ────────────────────────────────────────────────
-BOT_TOKEN    = os.environ.get("BOT_TOKEN", "")
-GITHUB_REPO  = "https://github.com/liemhandsome/hdbot"
+BOT_TOKEN    = os.environ.get("BOT_TOKEN", "TOKEN_Ở_ĐÂY")
+GITHUB_REPO  = "https://github.com/liemhandsome/hdcompiler"
 COMPILER_DIR = os.path.join(os.path.dirname(__file__), "hdcompiler")
-# Monkey-patch network: tất cả request qua proxy nếu được set
-PROXY = os.environ.get("HTTPS_PROXY") or os.environ.get("HTTP_PROXY")
-if PROXY:
-    proxies = {"http": PROXY, "https": PROXY}
-    _orig_get = requests.get
-    def _patched_get(url, **kw):
-        kw.setdefault("proxies", proxies)
-        kw.setdefault("verify", False)
-        return _orig_get(url, **kw)
-    requests.get = _patched_get
-    print(f"[monkey] Proxy đã bật: {PROXY}")
 
-# ── CLONE / UPDATE COMPILER ──────────────────────────────────
+# ── CLONE COMPILER ───────────────────────────────────────────
 def ensure_compiler():
-    """Clone hoặc pull repo compiler từ GitHub."""
     if os.path.isdir(os.path.join(COMPILER_DIR, ".git")):
-        print("[compiler] Đang pull cập nhật...")
         subprocess.run(["git", "-C", COMPILER_DIR, "pull"], check=True)
     else:
-        print(f"[compiler] Đang clone {GITHUB_REPO} ...")
         os.makedirs(COMPILER_DIR, exist_ok=True)
         subprocess.run(["git", "clone", GITHUB_REPO, COMPILER_DIR], check=True)
-    print("[compiler] Sẵn sàng.")
 
 # ── CHẠY COMPILER ────────────────────────────────────────────
-def run_compiler(asm_text: str, model: str = "580vnx", fmt: str = "hex") -> tuple[str, str]:
-    """
-    Chạy compiler với asm_text qua stdin.
-    Trả về (stdout, stderr).
-    model: '580vnx' | '570esp'
-    fmt  : 'hex'    | 'key'
-    """
+def run_compiler(asm_text: str, model="580vnx", fmt="hex"):
     if model == "580vnx":
         script = os.path.join(COMPILER_DIR, "580vnx", "compiler_.py")
     else:
         script = os.path.join(COMPILER_DIR, "570esp", "compiler.py")
-
     if not os.path.isfile(script):
         return "", f"Không tìm thấy compiler: {script}"
-
-    env = os.environ.copy()
-    env["PYTHONPATH"] = COMPILER_DIR
-
     try:
         proc = subprocess.run(
             [sys.executable, script, "-f", fmt],
-            input=asm_text,
-            capture_output=True,
-            text=True,
-            timeout=30,
+            input=asm_text, capture_output=True, text=True, timeout=30,
             cwd=os.path.dirname(script),
-            env=env,
         )
         return proc.stdout.strip(), proc.stderr.strip()
     except subprocess.TimeoutExpired:
-        return "", "Timeout: compiler chạy quá 30 giây."
+        return "", "Timeout: quá 30 giây."
     except Exception as ex:
         return "", str(ex)
 
-# ── DISCORD BOT ───────────────────────────────────────────────
+# ── BOT SETUP ────────────────────────────────────────────────
 intents = discord.Intents.default()
 intents.message_content = True
-client = discord.Client(intents=intents)
 
-HELP_TEXT = """```
+class HDBot(discord.Client):
+    def __init__(self):
+        super().__init__(intents=intents)
+        self.tree = app_commands.CommandTree(self)
+    async def setup_hook(self):
+        await self.tree.sync()
+        print("[bot] Slash commands đã sync")
+
+client = HDBot()
+
+# ── SLASH: /compile ──────────────────────────────────────────
+@client.tree.command(name="compile", description="Compile code ASM cho máy tính Casio")
+@app_commands.describe(
+    code  = "Code ASM cần compile",
+    model = "Model máy tính (mặc định: 580vnx)",
+    fmt   = "Format output (mặc định: hex)",
+)
+@app_commands.choices(
+    model=[
+        app_commands.Choice(name="580vnx", value="580vnx"),
+        app_commands.Choice(name="570esp", value="570esp"),
+    ],
+    fmt=[
+        app_commands.Choice(name="hex", value="hex"),
+        app_commands.Choice(name="key", value="key"),
+    ]
+)
+async def slash_compile(
+    interaction: discord.Interaction,
+    code: str,
+    model: str = "580vnx",
+    fmt: str = "hex",
+):
+    await interaction.response.defer()
+    stdout, stderr = run_compiler(code, model, fmt)
+    if stdout:
+        if len(stdout) > 1800:
+            with tempfile.NamedTemporaryFile(suffix=".txt", delete=False, mode="w") as f:
+                f.write(stdout)
+                fname = f.name
+            await interaction.followup.send("✅ Kết quả:", file=discord.File(fname, "output.txt"))
+            os.unlink(fname)
+        else:
+            await interaction.followup.send(f"✅ Kết quả:\n```\n{stdout}\n```")
+    if stderr:
+        await interaction.followup.send(f"⚠️ Lỗi:\n```\n{stderr[:1500]}\n```")
+    if not stdout and not stderr:
+        await interaction.followup.send("⚠️ Không có output.")
+
+# ── SLASH: /update ───────────────────────────────────────────
+@client.tree.command(name="update", description="Pull compiler mới nhất từ GitHub")
+async def slash_update(interaction: discord.Interaction):
+    await interaction.response.defer()
+    try:
+        ensure_compiler()
+        await interaction.followup.send("✅ Compiler đã cập nhật!")
+    except Exception as ex:
+        await interaction.followup.send(f"❌ Lỗi:\n```{ex}```")
+
+# ── SLASH: /help ─────────────────────────────────────────────
+@client.tree.command(name="help", description="Hướng dẫn dùng bot")
+async def slash_help(interaction: discord.Interaction):
+    await interaction.response.send_message("""```
 HD Compiler Bot
 ───────────────
-!compile [model] [fmt]
-  Đính kèm file .asm hoặc paste code trong code block.
-  model : 580vnx (mặc định) | 570esp
-  fmt   : hex (mặc định)    | key
+Slash commands:
+  /compile code:<code> [model] [fmt]
+  /update
+  /help
 
-!update   – Pull compiler mới nhất từ GitHub
-!help     – Hiển thị trợ giúp này
+Prefix commands:
+  !c <code>     compile nhanh
+  !compile      compile file .asm đính kèm
+```""")
 
-Ví dụ:
-  !compile                  ← dùng file đính kèm
-  !compile 580vnx key       ← output dạng key-press
-```"""
-
+# ── PREFIX COMMANDS ───────────────────────────────────────────
 @client.event
 async def on_ready():
     print(f"[bot] Đăng nhập: {client.user}")
@@ -112,90 +124,49 @@ async def on_ready():
 async def on_message(msg: discord.Message):
     if msg.author.bot:
         return
-
     content = msg.content.strip()
 
-    # ── !help ──
-    if content == "!help":
-        await msg.reply(HELP_TEXT)
+    if content.startswith("!c "):
+        asm_text = content[3:].strip()
+        await msg.reply("⚙️ Đang compile...")
+        stdout, stderr = run_compiler(asm_text)
+        if stdout:
+            await msg.reply(f"✅\n```\n{stdout}\n```")
+        if stderr:
+            await msg.reply(f"⚠️\n```\n{stderr[:1500]}\n```")
         return
 
-    # ── !update ──
-    if content == "!update":
-        await msg.reply("⏳ Đang pull từ GitHub...")
-        try:
-            ensure_compiler()
-            await msg.reply("✅ Compiler đã được cập nhật.")
-        except Exception as ex:
-            await msg.reply(f"❌ Lỗi:\n```{ex}```")
-        return
-
-    # ── !compile ──
     if content.startswith("!compile"):
-        parts  = content.split()
-        model  = "580vnx"
-        fmt    = "hex"
+        parts = content.split()
+        model, fmt = "580vnx", "hex"
         for p in parts[1:]:
-            if p in ("580vnx", "570esp"):
-                model = p
-            elif p in ("hex", "key"):
-                fmt = p
-
+            if p in ("580vnx", "570esp"): model = p
+            elif p in ("hex", "key"):     fmt = p
         asm_text = None
-
-        # 1. File đính kèm .asm
         for att in msg.attachments:
-            if att.filename.endswith(".asm") or att.filename.endswith(".txt"):
+            if att.filename.endswith((".asm", ".txt")):
                 asm_text = (await att.read()).decode("utf-8", errors="replace")
                 break
-
-        # 2. Code block trong message
-        if asm_text is None:
-            txt = msg.content
-            if "```" in txt:
-                start = txt.find("```") + 3
-                # bỏ tên ngôn ngữ nếu có
-                if txt[start:start+10].split("\n")[0].isalpha():
-                    start = txt.index("\n", start) + 1
-                end = txt.rfind("```")
-                asm_text = txt[start:end].strip()
-
+        if asm_text is None and "```" in content:
+            start = content.find("```") + 3
+            if content[start:start+10].split("\n")[0].isalpha():
+                start = content.index("\n", start) + 1
+            end = content.rfind("```")
+            asm_text = content[start:end].strip()
         if not asm_text:
-            await msg.reply("❓ Vui lòng đính kèm file `.asm` hoặc paste code trong ` ``` `.")
+            await msg.reply("❓ Đính kèm file `.asm` hoặc paste code trong ` ``` `")
             return
-
-        await msg.reply(f"⚙️ Đang compile `{model}` / `{fmt}`...")
-
+        await msg.reply("⚙️ Đang compile...")
         stdout, stderr = run_compiler(asm_text, model, fmt)
-
         if stdout:
-            # Nếu output dài, gửi file
-            if len(stdout) > 1800:
-                with tempfile.NamedTemporaryFile(suffix=".txt", delete=False, mode="w") as f:
-                    f.write(stdout)
-                    fname = f.name
-                await msg.reply(
-                    "✅ Kết quả (file):",
-                    file=discord.File(fname, filename="output.txt")
-                )
-                os.unlink(fname)
-            else:
-                await msg.reply(f"✅ Kết quả:\n```\n{stdout}\n```")
-        
+            await msg.reply(f"✅\n```\n{stdout}\n```")
         if stderr:
-            # Chỉ hiện 1500 ký tự đầu stderr
-            preview = stderr[:1500]
-            await msg.reply(f"⚠️ Lỗi/Log:\n```\n{preview}\n```")
-
-        if not stdout and not stderr:
-            await msg.reply("⚠️ Compiler không có output.")
+            await msg.reply(f"⚠️\n```\n{stderr[:1500]}\n```")
 
 # ── MAIN ─────────────────────────────────────────────────────
 if __name__ == "__main__":
     try:
         ensure_compiler()
     except Exception as ex:
-        print(f"[WARN] Không clone được compiler: {ex}")
-        print("       Bot vẫn chạy, dùng !update để thử lại.")
-
+        print(f"[WARN] {ex}")
     client.run(BOT_TOKEN)
